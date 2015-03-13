@@ -1,0 +1,199 @@
+#! /bin/bash
+#
+# Original Script
+# Nagios-Plugin zum überprüfen von Verbrauchsmaterialien in HP Druckern
+# Last Modified: 20-10-2006
+#
+# Modified by Lee Kilcullen
+# Date: 14-05-2008
+
+# Paths to commands used in this script.  These
+# may have to be modified to match your system setup.
+
+PATH="/usr/local/nagios/"
+SNMPGET="/usr/bin/snmpget"
+EXPR="/usr/bin/expr"
+PROGNAME=`/usr/bin/basename $0`
+
+PROGPATH=`echo $0 | /bin/sed -e 's,[\\/][^\\/][^\\/]*$,,'`
+REVISION=`echo '$Revision: 1.4 $' | /bin/sed -e 's/[^0-9.]//g'`
+
+. $PROGPATH/utils.sh
+
+print_usage() {
+    echo "Usage: $PROGNAME -H Host -OM OID-Max -OC OID-Cur -w Warn in % -c Critical in % -t Toner OID -C community string"
+    echo "Usage: $PROGNAME --help"
+    echo "Usage: $PROGNAME --version"
+}
+
+print_help() {
+    print_revision $PROGNAME $REVISION
+    echo ""
+    print_usage
+    echo ""
+    echo "Überprüfe Verbrauchsmaterial von HP-Druckern"
+    echo ""
+    support
+}
+
+# Make sure the correct number of command line
+# arguments have been supplied
+
+if [ $# -lt 1 ]; then
+    print_usage
+    exit $STATE_UNKNOWN
+fi
+
+# Grab the command line arguments
+
+exitstatus=$STATE_WARNING #default
+while test -n "$1"; do
+    case "$1" in
+        --help)
+            print_help
+            exit $STATE_OK
+            ;;
+        -h)
+            print_help
+            exit $STATE_OK
+            ;;
+        --version)
+            print_revision $PROGNAME $VERSION
+            exit $STATE_OK
+            ;;
+        -V)
+            print_revision $PROGNAME $VERSION
+            exit $STATE_OK
+            ;;
+        --host)
+            host=$2
+            shift
+            ;;
+        -H)
+            host=$2
+            shift
+            ;;
+        --oidmax)
+            oidmax=$2
+            shift
+            ;;
+        -OM)
+            oidmax=$2
+            shift
+            ;;
+        --oidcur)
+            oidcur=$2
+            shift
+            ;;
+        -OC)
+            oidcur=$2
+            shift
+            ;;
+﻿  -CL)
+﻿  ﻿  oidclass=$2
+﻿  ﻿  shift
+﻿  ﻿  ;;
+        --warn)
+            warn=$2
+            shift
+            ;;
+        -w)
+            warn=$2
+            shift
+            ;;
+        --current)
+            critical=$2
+            shift
+            ;;
+        -c)
+            critical=$2
+            shift
+            ;;
+        -x)
+            exitstatus=$2
+            shift
+            ;;
+        --exitstatus)
+            exitstatus=$2
+            shift
+            ;;
+﻿  -p)
+﻿      oidpag=$2
+﻿      shift
+   ﻿      ;;
+﻿  -C)
+﻿      comm=$2
+﻿      shift
+﻿      ;;
+﻿  -v)
+﻿  ﻿  vendor=$2
+﻿  ﻿  shift
+﻿  ﻿  ;;
+        *)
+            echo "Unknown argument: $1"
+            print_usage
+            exit $STATE_UNKNOWN
+            ;;
+    esac
+    shift
+done
+﻿  #get type of class
+﻿  class=`/usr/bin/snmpget -O Uvqs -v 1 -c $comm $host $oidclass`
+
+﻿  #get vendor of toner
+﻿  ven=`/usr/bin/snmpget -O Uvqs -v 1 -c $comm $host $vendor`
+
+﻿  #get current amount of toner
+﻿  rem=`/usr/bin/snmpget -O Uvbqs -v 1 -c $comm $host $oidcur`
+  
+﻿  if [[ $class = 3 ]]; then #Toner
+﻿  ﻿  if [[ $rem = -1 ]]; then
+﻿  ﻿  ﻿  exitstatus=2
+﻿  ﻿  ﻿  echo "Critical - $ven tauschen | $ven=0%"
+﻿  ﻿  elif [[ $rem = 0 ]]; then
+﻿  ﻿  ﻿  exitstatus=2
+﻿  ﻿  ﻿  echo "Critical - $ven tauschen | $ven=0%"
+﻿  ﻿  elif [[ $rem = -100 ]]; then
+﻿  ﻿  ﻿  exitstatus=1
+﻿  ﻿  ﻿  echo "WARNING - $ven bestellen | $ven=10%"
+﻿  ﻿  elif [[ $rem -gt $warn ]]; then
+﻿  ﻿  ﻿  echo "OK - $ven $rem% | $ven=$rem%"
+﻿  ﻿  ﻿  exitstatus=0
+﻿  ﻿  else
+﻿  ﻿  ﻿  exitstatus=3
+﻿  ﻿  ﻿  echo "Class:$class, Wert:$rem, Typ:$ven Unknown - I see dead people - Something is wrong"
+﻿  ﻿  fi
+﻿  elif [[ $class = 4 ]]; then #Resttoner
+﻿  ﻿  if [[ $rem = -1 ]]; then
+﻿  ﻿  ﻿  exitstatus=2
+﻿  ﻿  ﻿  echo "Critical - $ven tauschen | $ven=100%"
+﻿  ﻿  elif [[ $rem = -100 ]]; then
+﻿  ﻿  ﻿  exitstatus=1
+﻿  ﻿  ﻿  echo "WARNING - $ven bestellen | $ven=90%"
+﻿  ﻿  elif [[ $rem -lt 80 ]]; then
+﻿  ﻿  ﻿  echo "OK - $ven $rem% | $ven=$rem%"
+﻿  ﻿  ﻿  exitstatus=0
+﻿  ﻿  else
+﻿  ﻿  ﻿  exitstatus=3
+﻿  ﻿  ﻿  echo "Class:$class, Wert:$rem, Typ:$ven Unknown - I see dead people - Something is wrong"
+﻿  ﻿  fi
+﻿  else
+﻿  ﻿  exitstatus=3
+﻿  ﻿  echo "Class:$class, Wert:$rem, Typ:$ven Unknown - I see dead people - Something is wrong"
+﻿  fi
+
+#﻿  if [[ $rem = -1 ]]; then
+#﻿  ﻿  exitstatus=2
+#﻿  ﻿  echo "Critical - $ven tauschen"
+#﻿  elif [[ $rem = -2 ]]; then
+#﻿  ﻿  exitstatus=1
+#﻿  ﻿  echo "WARNING - $ven bestellen"
+#﻿  elif [[ $rem = -3 ]]; then
+#﻿  ﻿  echo "OK - $ven voll"
+#﻿  ﻿  exitstatus=0
+#﻿  else
+#﻿  ﻿  exitstatus=3
+#﻿  ﻿  echo "Unknown - I see dead people - Something is wrong"
+#﻿  fi
+
+exit $exitstatus
